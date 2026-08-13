@@ -1,0 +1,54 @@
+{
+  "timing": {
+    "min_chat_interval": 35,
+    "max_chat_interval": 45,
+    "min_cam_delay": 30,
+    "max_cam_delay": 90,
+    "typing_speed": 0.05,
+    "human_jitter": 2,
+    "mouse_move_duration": 0.3
+  },
+  "coordinates": {
+    "join_button": {
+      "x": 960,
+      "y": 550
+    },
+    "chat_icon": {
+      "x": 850,
+      "y": 1000
+    },
+    "camera_icon": {
+      "x": 200,
+      "y": 1000
+    },
+    "chat_input": {
+      "x": 400,
+      "y": 950
+    }
+  },
+  "execution": {
+    "mode": "shortcut",
+    "skip_join": false,
+    "auto_camera": true,
+    "auto_chat": true,
+    "simulation_mode": false
+  },
+  "shortcuts": {
+    "toggle_video": "alt+v",
+    "toggle_chat": "alt+h",
+    "toggle_mute": "alt+a"
+  },
+  "active_preset": "casual",
+  "custom_messages": [
+    "Hi everyone!",
+    "Hey, how's it going?",
+    "Can you hear me okay?",
+    "Sorry I'm late!",
+    "Nice to see you all 😊",
+    "Haha, that's great!",
+    "Totally agree with that.",
+    "Sounds good to me!",
+    "Thanks for sharing!",
+    "See you next time!"
+  ]
+}

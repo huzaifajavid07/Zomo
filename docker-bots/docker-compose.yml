@@ -1,0 +1,54 @@
+# ══════════════════════════════════════════════════════════════
+# Zomo Multi-Bot — Docker Compose
+# Scale bots with: docker compose up --scale bot=5
+# ══════════════════════════════════════════════════════════════
+
+services:
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      # ── Required: Set your Zoom meeting URL ──
+      - MEETING_URL=${MEETING_URL:-https://zoom.us/j/YOUR_MEETING_ID?pwd=YOUR_PASSWORD}
+
+      # ── Bot Identity ──
+      # Each container auto-generates a random name suffix if not set.
+      # Override per-instance with: docker compose run -e BOT_NAME="Alice" bot
+      - BOT_NAME=${BOT_NAME:-Participant}
+
+      # ── Chat Behavior ──
+      - CHAT_INTERVAL_MIN=${CHAT_INTERVAL_MIN:-15}
+      - CHAT_INTERVAL_MAX=${CHAT_INTERVAL_MAX:-45}
+
+      # ── Chat Messages ──
+      # JSON array or pipe-separated string
+      - CHAT_MESSAGES=${CHAT_MESSAGES:-["Hi everyone!","Can you hear me?","Great presentation!","Interesting point.","Thanks for sharing.","I agree with that.","Sorry I am late.","Good morning!","Sounds good to me.","Thanks for the update."]}
+
+      # ── Execution Settings ──
+      - HEADLESS=${HEADLESS:-true}
+      - MOCK_VIDEO=/app/mock_face.y4m
+      - BOT_TIMEOUT=${BOT_TIMEOUT:-3600}
+
+    # Resource limits per container
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "1.0"
+        reservations:
+          memory: 512M
+          cpus: "0.5"
+
+    # Shared memory for Chromium (prevents crashes)
+    shm_size: "512mb"
+
+    # Restart policy
+    restart: "no"
+
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

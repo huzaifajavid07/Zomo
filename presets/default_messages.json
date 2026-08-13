@@ -1,0 +1,68 @@
+{
+  "presets": {
+    "casual": {
+      "name": "Casual Meeting",
+      "description": "Relaxed, friendly messages for informal calls",
+      "messages": [
+        "Hi everyone!",
+        "Hey, how's it going?",
+        "Can you hear me okay?",
+        "Sorry I'm late!",
+        "Nice to see you all 😊",
+        "Haha, that's great!",
+        "Totally agree with that.",
+        "Sounds good to me!",
+        "Thanks for sharing!",
+        "See you next time!"
+      ]
+    },
+    "formal": {
+      "name": "Formal Webinar",
+      "description": "Professional messages for business meetings and webinars",
+      "messages": [
+        "Good morning/afternoon, everyone.",
+        "Thank you for the presentation.",
+        "That's an excellent point.",
+        "I appreciate the thorough analysis.",
+        "Could you elaborate on that?",
+        "I agree with the proposed approach.",
+        "Thank you for the update.",
+        "Looking forward to the next steps.",
+        "Great insights, thank you.",
+        "Is there a follow-up meeting scheduled?"
+      ]
+    },
+    "class": {
+      "name": "Online Class",
+      "description": "Messages suitable for online lectures and classes",
+      "messages": [
+        "Good morning, professor!",
+        "Can you repeat that, please?",
+        "Is this going to be on the exam?",
+        "That makes sense, thank you.",
+        "I have a question about that.",
+        "Could you share the slides?",
+        "Is the recording available after?",
+        "Thanks for the clarification.",
+        "Interesting topic today!",
+        "See you next class!"
+      ]
+    },
+    "standup": {
+      "name": "Daily Standup",
+      "description": "Quick messages for daily standup / scrum meetings",
+      "messages": [
+        "Morning everyone!",
+        "No blockers on my end.",
+        "Making good progress on the sprint.",
+        "I'll pick that up today.",
+        "Sounds like a plan.",
+        "Let's sync up after this.",
+        "I'll update the board.",
+        "Thanks team, have a good one!",
+        "Working on the same tasks as yesterday.",
+        "Almost done with that ticket."
+      ]
+    }
+  }
+}
