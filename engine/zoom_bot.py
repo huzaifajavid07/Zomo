@@ -59,6 +59,22 @@ class ZoomBot:
         pyautogui.PAUSE = 0.05
         pyautogui.FAILSAFE = True
 
+    def _ensure_zoom_focused(self):
+        """Best-effort window focus check for Zoom Desktop Client on Windows."""
+        try:
+            import sys
+            if sys.platform == "win32":
+                import ctypes
+                hwnd = ctypes.windll.user32.GetForegroundWindow()
+                length = ctypes.windll.user32.GetWindowTextLengthW(hwnd)
+                buf = ctypes.create_unicode_buffer(length + 1)
+                ctypes.windll.user32.GetWindowTextW(hwnd, buf, length + 1)
+                active_title = buf.value.lower()
+                if "zoom" not in active_title:
+                    self._log("warn", f"Zoom window might not be focused (active: '{buf.value[:30]}...'). Sending inputs anyway.")
+        except Exception:
+            pass
+
     # ── Logging ──────────────────────────────────────────────
 
     def _log(self, level: str, message: str):
@@ -87,6 +103,7 @@ class ZoomBot:
             self._log("sim", f"Simulated click at ({x}, {y})")
             return
 
+        self._ensure_zoom_focused()
         jitter = self.config["timing"].get("human_jitter", 2.0)
         duration = self.config["timing"].get("mouse_move_duration", 0.3)
 
@@ -104,6 +121,7 @@ class ZoomBot:
             self._log("sim", f"Simulated hotkey: {combo}")
             return
 
+        self._ensure_zoom_focused()
         keys = combo.lower().split("+")
         pyautogui.hotkey(*keys)
         time.sleep(random.uniform(0.2, 0.5))
@@ -114,6 +132,7 @@ class ZoomBot:
             self._log("sim", f"Simulated type: '{message}'")
             return
 
+        self._ensure_zoom_focused()
         pyperclip.copy(message)
         time.sleep(random.uniform(0.05, 0.15))
         pyautogui.hotkey("ctrl", "v")

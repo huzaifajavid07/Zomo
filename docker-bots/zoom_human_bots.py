@@ -39,6 +39,7 @@ Usage:
 import argparse
 import asyncio
 import json
+import math
 import os
 import random
 import signal
@@ -178,15 +179,24 @@ def parse_args():
     p.add_argument("--chat-max",       type=int,  default=int(os.getenv("CHAT_MAX", "60")))
     p.add_argument("--join-delay-min", type=int,  default=int(os.getenv("JOIN_DELAY_MIN", "8")))
     p.add_argument("--join-delay-max", type=int,  default=int(os.getenv("JOIN_DELAY_MAX", "25")))
-    p.add_argument("--video-delay-min",type=int,  default=int(os.getenv("VIDEO_DELAY_MIN", "1")), help="Min seconds after joining before first video start")
-    p.add_argument("--video-delay-max",type=int,  default=int(os.getenv("VIDEO_DELAY_MAX", "5")), help="Max seconds after joining before first video start")
+    p.add_argument("--video-delay-min",type=int,  default=int(os.getenv("VIDEO_DELAY_MIN", "10")), help="Min seconds after joining before first video start")
+    p.add_argument("--video-delay-max",type=int,  default=int(os.getenv("VIDEO_DELAY_MAX", "45")), help="Max seconds after joining before first video start")
+    p.add_argument("--video-on-min",   type=int,  default=int(os.getenv("VIDEO_ON_MIN", "3")), help="Min seconds camera stays ON during a burst (default: 3)")
+    p.add_argument("--video-on-max",   type=int,  default=int(os.getenv("VIDEO_ON_MAX", "5")), help="Max seconds camera stays ON during a burst (default: 5)")
+    p.add_argument("--video-off-min",  type=int,  default=int(os.getenv("VIDEO_OFF_MIN", "60")), help="Min seconds camera stays OFF between bursts")
+    p.add_argument("--video-off-max",  type=int,  default=int(os.getenv("VIDEO_OFF_MAX", "240")), help="Max seconds camera stays OFF between bursts")
     p.add_argument("--timeout",        type=int,  default=int(os.getenv("BOT_TIMEOUT", "3600")))
     p.add_argument("--headless",       action="store_true", default=None)
     p.add_argument("--no-headless",    action="store_true", default=False, help="Run browser with visible windows")
     p.add_argument("--mock-video",     type=str,  default=os.getenv("MOCK_VIDEO", "./mock_face.y4m"))
+    p.add_argument("--dataset-dir",    type=str,  default=os.getenv("DATASET_DIR", "./facial_dataset"), help="Folder containing facial expression dataset videos")
+    p.add_argument("--max-active-video", type=int, default=int(os.getenv("MAX_ACTIVE_VIDEO", "50")), help="Max bots streaming active webcam video simultaneously")
+    p.add_argument("--video-ratio",    type=float,default=float(os.getenv("VIDEO_RATIO", "1.0")), help="Ratio of bots with video enabled (e.g. 1.0 = 100% of bots)")
+    p.add_argument("--video-cycle-interval", type=int, default=int(os.getenv("VIDEO_CYCLE_INTERVAL", "0")), help="Seconds between camera rotations (0 = fixed)")
     p.add_argument("--avatar-dir",     type=str,  default=os.getenv("AVATAR_DIR", "./avatars"), help="Folder containing photo portraits")
-    p.add_argument("--video-pool",     type=str,  default=os.getenv("VIDEO_POOL", "./video_pool"), help="Folder containing cached Y4M video feeds")
-    p.add_argument("--per-bot-browser",action="store_true", default=False, help="Launch independent browser instance per bot for unique video feeds")
+    p.add_argument("--shared-browser", action="store_true", default=False, help="Share single browser instance across bots (may cause session conflicts)")
+    p.add_argument("--per-bot-browser",action="store_true", default=None, help="Launch independent browser instance per bot for complete session isolation (default: True)")
+    p.add_argument("--auto-replace",   action="store_true", default=None, help="Automatically spawn fresh replacement bot if any bot disconnects or fails (default: True)")
     p.add_argument("--names-file",     type=str,  default=None)
     p.add_argument("--messages-file",  type=str,  default=None)
     
@@ -195,119 +205,56 @@ def parse_args():
         args.headless = False
     elif args.headless is None:
         args.headless = os.getenv("HEADLESS", "true").lower() == "true"
+
+    if args.shared_browser:
+        args.per_bot_browser = False
+    elif args.per_bot_browser is None:
+        args.per_bot_browser = os.getenv("PER_BOT_BROWSER", "true").lower() == "true"
+
+    if args.auto_replace is None:
+        args.auto_replace = os.getenv("AUTO_REPLACE", "true").lower() == "true"
     return args
 
 
 # ── Video Pool Preparation ────────────────────────────────────
 
-# Distinct hue presets (H, S, V as fractions 0-1) for per-bot color variation
-_BOT_SKIN_TONES = [
-    (0.06, 0.30, 0.90),  # warm peach
-    (0.05, 0.25, 0.80),  # olive
-    (0.04, 0.20, 0.70),  # medium brown
-    (0.08, 0.35, 0.95),  # fair/rosy
-    (0.07, 0.22, 0.60),  # deep brown
-    (0.05, 0.28, 0.85),  # golden
-    (0.06, 0.18, 0.50),  # dark
-    (0.09, 0.32, 0.92),  # light warm
-]
-
-
-def _hsv_to_yuv(h, s, v):
-    """Convert HSV → RGB → YUV (BT.601). Returns (Y, U, V) integer bytes."""
-    import math
-    hi = int(h * 6) % 6
-    f  = h * 6 - int(h * 6)
-    p  = v * (1 - s)
-    q  = v * (1 - f * s)
-    t  = v * (1 - (1 - f) * s)
-    rgb_map = [(v,t,p),(q,v,p),(p,v,t),(p,q,v),(t,p,v),(v,p,q)]
-    r, g, b = rgb_map[hi]
-    # BT.601 coefficients
-    Y =  16 + int(65.481*r + 128.553*g + 24.966*b)
-    U = 128 + int(-37.797*r - 74.203*g + 112.0*b)
-    V = 128 + int(112.0*r - 93.786*g - 18.214*b)
-    return (max(16, min(235, Y)), max(16, min(240, U)), max(16, min(240, V)))
-
-
-def generate_colored_bot_video(output_path: str, bot_index: int,
-                               width=320, height=240, fps=10, duration_sec=300):
-    """Generate a unique colored animated face silhouette Y4M for a specific bot.
-    Uses lower resolution (320x240) and 10fps to keep file size manageable,
-    and a 5-minute duration so the stream doesn't go black mid-session."""
-    import math
-    tone = _BOT_SKIN_TONES[bot_index % len(_BOT_SKIN_TONES)]
-    skin_Y, skin_U, skin_V = _hsv_to_yuv(*tone)
-    total_frames = fps * duration_sec
-    cx, cy     = width // 2, height // 2
-    head_r     = min(width, height) // 6
-    body_w     = min(width, height) // 4
-    body_h     = min(width, height) // 3
-    head_cy    = cy - head_r * 2
-    body_cy    = cy + head_r
-
-    # Pre-compute a single base frame to copy for speed, just vary the animation phase
-    log("INFO", f"Generating {duration_sec}s bot video at {width}x{height}@{fps}fps "
-        f"({total_frames} frames)...", "SETUP")
-
-    with open(output_path, "wb") as f:
-        header = f"YUV4MPEG2 W{width} H{height} F{fps}:1 Ip A1:1 C420\n"
-        f.write(header.encode("ascii"))
-
-        # Precompute static face mask for performance
-        face_mask = bytearray(width * height)   # 1 = face/body, 0 = background
-        uv_mask   = bytearray((width // 2) * (height // 2))
-        for row in range(height):
-            for col in range(width):
-                dx = col - cx
-                hd = math.sqrt(dx**2 + (row - head_cy)**2)
-                bd = math.sqrt((dx / body_w)**2 + ((row - body_cy) / body_h)**2)
-                face_mask[row * width + col] = 1 if (hd < head_r or bd < 1.0) else 0
-        for row in range(height // 2):
-            for col in range(width // 2):
-                sr, sc = row * 2, col * 2
-                dx = sc - cx
-                hd = math.sqrt(dx**2 + (sr - head_cy)**2)
-                bd = math.sqrt((dx / body_w)**2 + ((sr - body_cy) / body_h)**2)
-                uv_mask[row * (width // 2) + col] = 1 if (hd < head_r or bd < 1.0) else 0
-
-        for frame_num in range(total_frames):
-            phase = (frame_num / fps) * 0.5  # slow subtle animation
-            anim = int(4 * math.sin(phase))
-
-            y_plane = bytearray(width * height)
-            for i in range(width * height):
-                if face_mask[i]:
-                    y_plane[i] = max(16, min(235, skin_Y + anim))
-                else:
-                    row_i = i // width
-                    bg = 70 + int(8 * math.sin(row_i * 0.04 + phase))
-                    y_plane[i] = max(16, min(235, bg))
-
-            u_plane = bytearray((width // 2) * (height // 2))
-            v_plane = bytearray((width // 2) * (height // 2))
-            for i in range(len(uv_mask)):
-                if uv_mask[i]:
-                    u_plane[i] = skin_U
-                    v_plane[i] = skin_V
-                else:
-                    u_plane[i] = 128
-                    v_plane[i] = 128
-
-            f.write(b"FRAME\n")
-            f.write(bytes(y_plane) + bytes(u_plane) + bytes(v_plane))
-
-
-
-
-def prepare_video_pool(avatar_dir: str = "./avatars", pool_dir: str = "./video_pool",
-                       bot_count: int = 1) -> list:
-    """Scan avatar images → Y4M, or auto-generate unique colored streams per bot."""
+def prepare_video_pool(dataset_dir: str = "./facial_dataset", avatar_dir: str = "./avatars",
+                       pool_dir: str = "./video_pool", bot_count: int = 1) -> list:
+    """Scan facial expression dataset → Y4M snippets, or avatar images → Y4M."""
+    dataset_path = resolve_path(dataset_dir)
     avatars_path = resolve_path(avatar_dir)
     pool_path = resolve_path(pool_dir)
     pool_path.mkdir(parents=True, exist_ok=True)
 
-    # Convert any avatar photos to Y4M if present
+    # 1. Process Facial Expression Dataset videos if present in dataset_dir or pool_dir
+    valid_vid_exts = {".mp4", ".avi", ".mov", ".webm", ".mkv", ".m4v"}
+    source_dir = None
+    if dataset_path.exists():
+        vid_files = [f for f in dataset_path.rglob("*") if f.is_file() and f.suffix.lower() in valid_vid_exts]
+        if vid_files:
+            source_dir = dataset_path
+    if not source_dir and pool_path.exists():
+        vid_files = [f for f in pool_path.glob("*") if f.is_file() and f.suffix.lower() in valid_vid_exts]
+        if vid_files:
+            source_dir = pool_path
+
+    if source_dir:
+        vid_files = [f for f in source_dir.rglob("*") if f.is_file() and f.suffix.lower() in valid_vid_exts]
+        if vid_files:
+            try:
+                from dataset_to_video import process_dataset_directory
+                needed = max(bot_count, 5)
+                existing_snippets = list(pool_path.glob("*.y4m"))
+                if len(existing_snippets) < needed:
+                    log("INFO", f"Extracting realistic snippets from facial expression dataset ({len(vid_files)} source videos)...", "SETUP")
+                    processed = process_dataset_directory(str(source_dir), str(pool_path), count=needed)
+                    if processed:
+                        log("OK", f"Facial dataset active: {len(processed)} snippet video(s) ready in {pool_path}/", "SETUP")
+                        return [str(f.resolve()) for f in sorted(pool_path.glob("*.y4m"))]
+            except Exception as e:
+                log("WARN", f"Facial expression dataset conversion warning: {e}", "SETUP")
+
+    # 2. Convert any avatar photos to Y4M if present
     if avatars_path.exists():
         valid_exts = {".jpg", ".jpeg", ".png", ".webp"}
         image_files = [f for f in avatars_path.iterdir() if f.suffix.lower() in valid_exts]
@@ -321,23 +268,6 @@ def prepare_video_pool(avatar_dir: str = "./avatars", pool_dir: str = "./video_p
                         create_animated_y4m_from_image(str(img), str(out_y4m))
             except Exception as e:
                 log("WARN", f"Avatar image conversion warning: {e}", "SETUP")
-
-    y4m_files = list(pool_path.glob("*.y4m"))
-
-    # Auto-generate unique colored bot feeds if pool is insufficient
-    if len(y4m_files) < bot_count:
-        needed = bot_count - len(y4m_files)
-        existing_count = len(y4m_files)
-        log("INFO", f"Auto-generating {needed} unique bot video feed(s) in {pool_path}/...", "SETUP")
-        for idx in range(needed):
-            bot_idx = existing_count + idx
-            out_y4m = pool_path / f"bot_face_{bot_idx:02d}.y4m"
-            try:
-                generate_colored_bot_video(str(out_y4m), bot_index=bot_idx)
-                log("OK", f"  Generated: {out_y4m.name} (skin tone variant {bot_idx})", "SETUP")
-                y4m_files.append(out_y4m)
-            except Exception as e:
-                log("WARN", f"  Could not generate bot video {bot_idx}: {e}", "SETUP")
 
     return [str(f.resolve()) for f in sorted(pool_path.glob("*.y4m"))]
 
@@ -364,7 +294,7 @@ def to_web_client_url(url: str) -> str:
 
 # ── Browser Args ─────────────────────────────────────────────
 
-def get_browser_args(mock_video: str) -> list:
+def get_browser_args(mock_video: Optional[str] = None) -> list:
     """Return Chromium launch arguments for minimal RAM, fake media, human UA."""
     args = [
         "--autoplay-policy=no-user-gesture-required",
@@ -388,20 +318,15 @@ def get_browser_args(mock_video: str) -> list:
         "--no-default-browser-check",
     ]
 
-    video = resolve_path(mock_video)
-    if not video.exists():
-        try:
-            from generate_mock_video import create_y4m
-            log("INFO", f"Generating synthetic human webcam video at {video}...", "SETUP")
-            create_y4m(str(video), width=640, height=480, fps=15, duration_sec=20)
-        except Exception as e:
-            log("WARN", f"Could not auto-generate mock video: {e}. Using Chrome color bars.", "SETUP")
-
-    if video.exists():
-        args.append(f"--use-file-for-fake-video-capture={video.resolve()}")
-        log("OK", f"Mock video active: {video.resolve()}", "SETUP")
+    if mock_video:
+        video = resolve_path(mock_video)
+        if video.exists() and video.is_file():
+            args.append(f"--use-file-for-fake-video-capture={video.resolve()}")
+            log("OK", f"Mock video active: {video.resolve()}", "SETUP")
+        else:
+            log("INFO", f"Mock video file not found at {mock_video}. Using Chrome default fake video stream.", "SETUP")
     else:
-        log("WARN", f"Mock video file not available. Using default fake video stream.", "SETUP")
+        log("INFO", "Using Chrome default fake video stream.", "SETUP")
 
     return args
 
@@ -414,7 +339,10 @@ class HumanBot:
     def __init__(self, name: str, context, meeting_url: str,
                  chat_min: int, chat_max: int,
                  messages: list, timeout: int, bot_index: int,
-                 video_delay_min: int = 1, video_delay_max: int = 5):
+                 video_delay_min: int = 10, video_delay_max: int = 45,
+                 video_on_min: int = 3, video_on_max: int = 5,
+                 video_off_min: int = 60, video_off_max: int = 240,
+                 video_enabled: bool = True):
         self.name            = name
         self.context         = context
         self.url             = meeting_url
@@ -425,10 +353,20 @@ class HumanBot:
         self.index           = bot_index
         self.video_delay_min = video_delay_min
         self.video_delay_max = video_delay_max
+        self.video_on_min    = video_on_min
+        self.video_on_max    = video_on_max
+        self.video_off_min   = video_off_min
+        self.video_off_max   = video_off_max
+        self.video_enabled   = video_enabled
         self.page            = None
         self.alive           = False
         self.msgs_sent       = 0
         self.joined_at       = None
+
+        import urllib.parse
+        parsed = urllib.parse.urlparse(self.url)
+        qs = urllib.parse.parse_qs(parsed.query)
+        self.passcode = qs.get("pwd", [""])[0]
 
     def log(self, level, msg):
         log(level, msg, self.name[:16])
@@ -482,6 +420,46 @@ class HumanBot:
         // 5. Languages & Plugins
         Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
         Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+
+        // 6. OneTrust Cookie Auto-Bypass & DOM Suppression
+        try {
+            const style = document.createElement('style');
+            style.id = 'zomo-onetrust-suppress';
+            style.textContent = `
+                #onetrust-consent-sdk, #onetrust-banner-sdk, .onetrust-pc-dark-filter,
+                #onetrust-group-container, .optanon-alert-box-wrapper, #onetrust-pc-sdk {
+                    display: none !important;
+                    visibility: hidden !important;
+                    opacity: 0 !important;
+                    pointer-events: none !important;
+                    z-index: -99999 !important;
+                }
+            `;
+            (document.head || document.documentElement).appendChild(style);
+
+            const nukeOneTrust = () => {
+                const acceptBtn = document.querySelector('#onetrust-accept-btn-handler') ||
+                                  document.querySelector('.onetrust-close-btn-handler') ||
+                                  document.querySelector('button[aria-label="Close"]');
+                if (acceptBtn) {
+                    try { acceptBtn.click(); } catch(e) {}
+                }
+                const ids = ['onetrust-consent-sdk', 'onetrust-banner-sdk', 'onetrust-pc-dark-filter', 'onetrust-group-container'];
+                ids.forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.remove();
+                });
+                document.querySelectorAll('.onetrust-pc-dark-filter, [class*="onetrust"]').forEach(el => el.remove());
+            };
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', nukeOneTrust);
+            } else {
+                nukeOneTrust();
+            }
+            const ob = new MutationObserver(nukeOneTrust);
+            ob.observe(document.documentElement, { childList: true, subtree: true });
+        } catch (e) {}
         """
         await self.page.add_init_script(STEALTH_JS)
 
@@ -798,6 +776,12 @@ class HumanBot:
         except Exception:
             return False
 
+    async def setup_audio_and_video(self):
+        """Configure microphone (always muted) and ensure camera starts OFF (random bursts occur later)."""
+        await self.ensure_muted()
+        # Bots start with camera OFF, then randomly turn on for short instances
+        await self.turn_off_video()
+
     # ── Human-like Typing ─────────────────────────────────────
 
     async def human_type(self, locator, text: str):
@@ -818,6 +802,37 @@ class HumanBot:
         if not self.page:
             return False
 
+        try:
+            removed = await self.page.evaluate("""() => {
+                let clicked = false;
+                const acceptBtn = document.querySelector('#onetrust-accept-btn-handler') ||
+                                  document.querySelector('button#onetrust-accept-btn-handler') ||
+                                  document.querySelector('.onetrust-close-btn-handler');
+                if (acceptBtn) {
+                    acceptBtn.click();
+                    clicked = true;
+                }
+                const ids = [
+                    'onetrust-banner-sdk',
+                    'onetrust-consent-sdk',
+                    'onetrust-pc-dark-filter',
+                    'onetrust-group-container'
+                ];
+                ids.forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) { el.remove(); clicked = true; }
+                });
+                document.querySelectorAll('.onetrust-pc-dark-filter, [class*="onetrust"], [id*="onetrust"]').forEach(el => {
+                    el.remove();
+                    clicked = true;
+                });
+                return clicked;
+            }""")
+            if removed:
+                return True
+        except Exception:
+            pass
+
         cookie_selectors = [
             "#onetrust-accept-btn-handler",
             "button:has-text('ACCEPT COOKIES')",
@@ -833,7 +848,6 @@ class HumanBot:
             "#wc_agree1",
         ]
 
-        clicked = False
         for sel in cookie_selectors:
             try:
                 loc = self.page.locator(sel)
@@ -843,38 +857,18 @@ class HumanBot:
                         item = loc.nth(idx)
                         if await item.is_visible():
                             try:
-                                await item.click(timeout=1500)
+                                await item.click(timeout=1000)
                             except Exception:
                                 try:
-                                    await item.click(force=True, timeout=1500)
+                                    await item.click(force=True, timeout=1000)
                                 except Exception:
                                     await item.evaluate("el => el.click()")
                             self.log("ACT", f"✓ Dismissed cookie banner via: {sel}")
-                            clicked = True
-                            await asyncio.sleep(0.3)
-                            break
+                            return True
             except Exception:
                 continue
 
-        # Failsafe: DOM removal of OneTrust backdrop/banner elements if still present
-        try:
-            await self.page.evaluate("""() => {
-                const ids = [
-                    'onetrust-banner-sdk',
-                    'onetrust-consent-sdk',
-                    'onetrust-pc-dark-filter',
-                    'onetrust-group-container'
-                ];
-                ids.forEach(id => {
-                    const el = document.getElementById(id);
-                    if (el) el.remove();
-                });
-                document.querySelectorAll('.onetrust-pc-dark-filter, [class*="onetrust"], [id*="onetrust"]').forEach(el => el.remove());
-            }""")
-        except Exception:
-            pass
-
-        return clicked
+        return False
 
     async def try_click(self, selector: str, timeout: int = 3000, description: str = "") -> bool:
         try:
@@ -992,18 +986,15 @@ class HumanBot:
     async def join(self) -> bool:
         self.log("JOIN", f"Navigating → {self.url[:60]}...")
         try:
-            await self.page.goto(self.url, wait_until="domcontentloaded", timeout=30000)
+            await self.page.goto(self.url, wait_until="domcontentloaded", timeout=35000)
         except Exception as e:
             self.log("ERR", f"Navigation failed: {e}")
             return False
 
-        await asyncio.sleep(random.uniform(1.5, 3.0))
-
-        # ── Step 1: Dismiss Cookie / Privacy / Terms popups ──
+        await asyncio.sleep(random.uniform(1.0, 2.0))
         await self.dismiss_cookie_banner()
-        await asyncio.sleep(random.uniform(0.5, 1.0))
 
-        # ── Step 2: Dismiss desktop app prompt / click browser join link ──
+        # ── Step 1: Dismiss desktop app prompt / click browser join link if present ──
         browser_join = [
             "text=Join from Your Browser",
             "text=join from your browser",
@@ -1013,14 +1004,13 @@ class HumanBot:
             "button:has-text('Join from Your Browser')",
         ]
         for sel in browser_join:
-            if await self.try_click(sel, 3000, "Browser join link"):
-                await asyncio.sleep(random.uniform(1.5, 3.0))
+            if await self.try_click(sel, 2000, "Browser join link"):
+                await asyncio.sleep(random.uniform(1.5, 2.5))
                 break
 
-        await asyncio.sleep(random.uniform(0.5, 1.5))
         await self.dismiss_cookie_banner()
 
-        # ── Step 3: Fill display name ──
+        # ── Step 2: Fill display name (with robust waiting for React SPA) ──
         name_selectors = [
             "#inputname",
             "input[name='inputname']",
@@ -1035,20 +1025,33 @@ class HumanBot:
         ]
 
         filled = False
-        for attempt in range(5):
+        self.log("INFO", "Waiting for Zoom Web Client join form...")
+        for attempt in range(30):
             await self.dismiss_cookie_banner()
+            # If already joined or waiting, break early
+            st = await self.check_join_status()
+            if st in ("JOINED", "WAITING_ROOM"):
+                break
+
+            # If still on launch page, retry browser join link
+            if attempt in (3, 7, 12):
+                for sel in browser_join:
+                    if await self.try_click(sel, 1500, "Browser join link"):
+                        break
+
             filled = await self.find_and_fill(name_selectors, self.name)
             if filled:
                 self.log("OK", f"Name entered: {self.name}")
                 break
-            await asyncio.sleep(1.5)
+            await asyncio.sleep(1.0)
 
         if not filled:
-            self.log("WARN", "Could not fill name field automatically.")
+            self.log("WARN", "Could not fill name field automatically. Checking if passcode or room already joined.")
 
-        await asyncio.sleep(random.uniform(0.4, 1.0))
+        await asyncio.sleep(random.uniform(0.3, 0.7))
+        await self.dismiss_cookie_banner()
 
-        # ── Step 4: Accept Terms of Service ──
+        # ── Step 3: Accept Terms of Service ──
         tos_selectors = [
             "#wc_agree1",
             "input[type='checkbox'][id*='agree']",
@@ -1058,13 +1061,13 @@ class HumanBot:
         for sel in tos_selectors:
             await self.try_click(sel, 1500, "ToS checkbox")
 
-        await asyncio.sleep(random.uniform(0.3, 0.8))
+        await asyncio.sleep(random.uniform(0.3, 0.6))
 
-        # ── Step 5: Simulate human mouse gesture to satisfy reCAPTCHA v3 score ──
+        # ── Step 4: Simulate human mouse gesture to satisfy reCAPTCHA v3 score ──
         await self.human_mouse_move()
-        await asyncio.sleep(random.uniform(0.3, 0.7))
+        await asyncio.sleep(random.uniform(0.3, 0.6))
 
-        # ── Step 6: Click Join ──
+        # ── Step 5: Click Join ──
         join_selectors = [
             "#joinBtn",
             "button:has-text('Join')",
@@ -1077,26 +1080,36 @@ class HumanBot:
             if await self.try_click(sel, 3000, "Join button"):
                 break
 
-        # ── Step 7: Passcode Check ──
+        # ── Step 6: Passcode Check & Auto-Fill ──
         passcode_selectors = [
             "#inputpasscode",
             "input[name='inputpasscode']",
             "input[placeholder*='passcode' i]",
             "input[placeholder*='Passcode']",
+            "input[type='password']",
         ]
-        for sel in passcode_selectors:
+        await asyncio.sleep(2.0)
+        for p_sel in passcode_selectors:
             try:
-                loc = self.page.locator(sel)
+                loc = self.page.locator(p_sel)
                 if await loc.count() > 0 and await loc.first.is_visible():
-                    self.log("WARN", "🔒 Passcode prompt requested. Check if passcode in URL is correct.")
+                    if getattr(self, "passcode", None):
+                        self.log("INFO", "🔑 Entering meeting passcode...")
+                        await loc.first.clear()
+                        await self.human_type(loc.first, self.passcode)
+                        for sel in join_selectors:
+                            if await self.try_click(sel, 2000, "Join with Passcode"):
+                                break
+                    else:
+                        self.log("WARN", "🔒 Passcode prompt requested. Check if passcode was provided.")
                     break
             except Exception:
                 pass
 
         self.log("INFO", "Waiting for meeting room connection...")
-        await asyncio.sleep(random.uniform(6, 10))
+        await asyncio.sleep(random.uniform(5, 8))
 
-        # ── Step 8: Check Status & Handle Audio (with retry for BotGuard) ──
+        # ── Step 7: Check Status & Handle Audio (with retry for BotGuard) ──
         status = await self.check_join_status()
 
         # Retry if blocked by BotGuard reCAPTCHA
@@ -1150,11 +1163,17 @@ class HumanBot:
 
     async def _open_chat_panel(self) -> bool:
         """Ensure the chat side-panel is open. Returns True if likely open."""
+        if not self.page:
+            return False
+
         # Check if input is already visible
         already_open = [
+            "div.ql-editor[contenteditable='true']",
             "div[contenteditable='true']",
+            "div[role='textbox']",
             "textarea[placeholder*='message' i]",
             "[aria-label*='type message' i]",
+            "[class*='chat-box'] [contenteditable='true']",
         ]
         for sel in already_open:
             try:
@@ -1164,32 +1183,42 @@ class HumanBot:
             except Exception:
                 pass
 
-        # Try clicking the Chat button
+        await self.wake_toolbar()
+        await asyncio.sleep(0.3)
+
+        # Try clicking the Chat button in toolbar
         chat_btn_selectors = [
-            "button:has-text('Chat')",
-            "[aria-label*='open the chat pane' i]",
-            "[aria-label='Chat']",
-            "[aria-label*='Chat' i]",
-            ".footer-button-base:has-text('Chat')",
+            "#wc-footer button[aria-label*='Chat' i]",
+            "#wc-footer button[aria-label*='chat' i]",
             "#wc-footer button:has-text('Chat')",
+            "button[aria-label*='open the chat pane' i]",
+            "button[aria-label='Chat']",
+            "button[aria-label*='Chat' i]",
+            "button:has-text('Chat')",
+            ".footer-button-base:has-text('Chat')",
             "[class*='chat-button']",
             "[class*='ChatButton']",
             "button[title*='Chat' i]",
         ]
-        clicked = False
         for sel in chat_btn_selectors:
-            if await self.try_click(sel, 2500):
-                clicked = True
-                await asyncio.sleep(random.uniform(0.6, 1.2))
+            if await self.try_click(sel, 1500):
+                await asyncio.sleep(random.uniform(0.5, 1.0))
                 break
+        else:
+            # Try More button menu if toolbar is compact
+            more_selectors = ["#wc-footer button:has-text('More')", "#wc-footer button[aria-label*='More' i]", "button[aria-label='More']"]
+            for m_sel in more_selectors:
+                if await self.try_click(m_sel, 1200):
+                    await asyncio.sleep(0.4)
+                    await self.try_click("button:has-text('Chat'), [aria-label*='Chat' i], a:has-text('Chat')", 1500)
+                    break
 
-        if not clicked:
-            # Fallback: Zoom web chat keyboard shortcut Alt+H
-            try:
-                await self.page.keyboard.press("Alt+h")
-                await asyncio.sleep(0.8)
-            except Exception:
-                pass
+        # Fallback: Zoom web chat keyboard shortcut Alt+H
+        try:
+            await self.page.keyboard.press("Alt+h")
+            await asyncio.sleep(0.6)
+        except Exception:
+            pass
 
         # Confirm panel opened
         for sel in already_open:
@@ -1203,11 +1232,16 @@ class HumanBot:
 
     async def send_chat(self, message: str) -> bool:
         try:
+            if not self.page:
+                return False
+
             # Ensure chat panel is open
             await self._open_chat_panel()
 
-            # Find and use chat input (support both textarea and div[contenteditable])
+            # Find and use chat input
             input_selectors = [
+                "div.ql-editor[contenteditable='true']",
+                "div[role='textbox'][contenteditable='true']",
                 "[aria-label*='type message' i]",
                 "[aria-label*='chat' i][contenteditable='true']",
                 "div[contenteditable='true']",
@@ -1227,33 +1261,58 @@ class HumanBot:
                 try:
                     loc = self.page.locator(sel)
                     if await loc.count() > 0 and await loc.first.is_visible():
-                        # Scroll into view and click
                         try:
                             await loc.first.scroll_into_view_if_needed()
                         except Exception:
                             pass
                         await loc.first.click()
-                        await asyncio.sleep(random.uniform(0.2, 0.45))
+                        await asyncio.sleep(0.2)
 
-                        # Clear any stale text, then type
-                        try:
-                            await loc.first.select_all()
-                        except Exception:
-                            pass
+                        # Type message
                         try:
                             await loc.first.fill(message)
                         except Exception:
                             for char in message:
                                 await loc.first.press(char)
-                                await asyncio.sleep(max(0.02, random.gauss(0.065, 0.02)))
+                                await asyncio.sleep(max(0.015, random.gauss(0.04, 0.01)))
 
-                        await asyncio.sleep(random.uniform(0.3, 0.6))
-                        await loc.first.press("Enter")
+                        await asyncio.sleep(0.2)
+                        await self.page.keyboard.press("Enter")
                         self.msgs_sent += 1
                         self.log("CHAT", f"💬 '{message}' (total: {self.msgs_sent})")
                         return True
                 except Exception:
                     continue
+
+            # JavaScript fallback injection if selectors were elusive
+            try:
+                sent = await self.page.evaluate("""
+                    (text) => {
+                        const el = document.querySelector(
+                            'div.ql-editor, div[role="textbox"], div[contenteditable="true"], textarea[placeholder*="message" i], textarea'
+                        );
+                        if (el && el.offsetParent !== null) {
+                            el.focus();
+                            if (el.tagName.toLowerCase() === 'textarea' || el.tagName.toLowerCase() === 'input') {
+                                el.value = text;
+                                el.dispatchEvent(new Event('input', { bubbles: true }));
+                            } else {
+                                el.textContent = text;
+                                el.dispatchEvent(new Event('input', { bubbles: true }));
+                            }
+                            el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+                            return true;
+                        }
+                        return false;
+                    }
+                """, message)
+                if sent:
+                    await self.page.keyboard.press("Enter")
+                    self.msgs_sent += 1
+                    self.log("CHAT", f"💬 '{message}' (total: {self.msgs_sent})")
+                    return True
+            except Exception:
+                pass
 
             self.log("WARN", "Chat input field not visible or disabled by host.")
             return False
@@ -1423,16 +1482,29 @@ class HumanBot:
     async def run(self):
         try:
             await self.open_page()
-            joined = await self.join()
+            joined = False
+            for attempt in range(1, 3):
+                joined = await self.join()
+                if joined:
+                    break
+                self.log("WARN", f"Join attempt {attempt} did not succeed. Retrying join with fresh page...")
+                await asyncio.sleep(random.uniform(4.0, 7.0))
+                try:
+                    await self.page.close()
+                except Exception:
+                    pass
+                await self.open_page()
+
             if not joined:
-                self.log("ERR", "Failed to join. Exiting.")
+                self.log("ERR", "All join attempts failed. Exiting.")
                 return
 
             # Schedule events
             start = time.time()
             video_is_on      = False
-            # First video start: almost immediately (3-8s after joining) — bots stream video right away
-            next_video_event = start + random.randint(3, 8)
+            # Staggered first video instance: spread across bots so they don't turn on together
+            initial_video_delay = (self.index * random.randint(15, 30)) + random.randint(self.video_delay_min, self.video_delay_max)
+            next_video_event = start + initial_video_delay
             next_chat        = start + random.randint(self.chat_min, self.chat_max)
             next_reaction    = start + random.randint(60, 180)
             raise_hand_at    = start + random.randint(120, 600) if random.random() < 0.3 else float("inf")
@@ -1472,28 +1544,12 @@ class HumanBot:
                     self.joined_at = time.time()
                     next_chat = time.time() + random.randint(self.chat_min, self.chat_max)
 
-                # ── Random Video Toggle (on/off at natural intervals) ──
-                if now >= next_video_event:
-                    if not video_is_on:
-                        # Turn ON — bot appears on camera
-                        turned_on = await self.ensure_video_on()
-                        if turned_on:
-                            video_is_on = True
-                            # Stay on camera for 4–8 minutes (bots stream video most of the time)
-                            on_dur = random.randint(240, 480)
-                            next_video_event = now + on_dur
-                            self.log("ACT", f"📹 Camera ON — streaming for ~{on_dur//60}m {on_dur%60}s")
-                        else:
-                            # Couldn't start — retry sooner
-                            next_video_event = now + random.randint(8, 20)
-                    else:
-                        # Turn OFF — bot briefly steps away (realistic break)
-                        await self.turn_off_video()
-                        video_is_on = False
-                        # Only off-camera for 15–30 seconds (short break)
-                        off_dur = random.randint(15, 30)
-                        next_video_event = now + off_dur
-                        self.log("ACT", f"📷 Camera OFF — returning in ~{off_dur}s")
+                # ── Persistent Video Health Check ──
+                if self.video_enabled and now >= next_video_event:
+                    if not await self.is_video_on():
+                        self.log("ACT", "📹 Re-enabling webcam video stream...")
+                        await self.ensure_video_on()
+                    next_video_event = now + random.randint(30, 60)
 
                 # ── Mic always muted — re-enforce every 30s ──
                 if now >= next_mute_check:
@@ -1569,13 +1625,26 @@ class BotManager:
                 messages = json.load(f)
             log("OK", f"Loaded {len(messages)} custom messages.", "SETUP")
 
-        # ── Prepare photo portrait video pool (auto-generate unique per-bot if needed) ──
+        # ── Prepare photo portrait / facial expression video pool ──
         video_pool_files = prepare_video_pool(
-            self.args.avatar_dir, self.args.video_pool,
-            bot_count=self.args.count if self.args.per_bot_browser else 1
+            dataset_dir=getattr(self.args, "dataset_dir", "./facial_dataset"),
+            avatar_dir=self.args.avatar_dir,
+            pool_dir=self.args.video_pool,
+            bot_count=self.args.count if getattr(self.args, "per_bot_browser", True) else 1
         )
         if video_pool_files:
             log("OK", f"Video Pool active: {len(video_pool_files)} bot video feed(s) ready.", "SETUP")
+
+        # ── Hardware Video Concurrency ──
+        max_active = getattr(self.args, "max_active_video", 50)
+        ratio = getattr(self.args, "video_ratio", 1.0)
+        if getattr(self.args, "count", 1) == 1:
+            num_video_bots = 1
+        else:
+            num_video_bots = max(1, min(max_active, math.ceil(self.args.count * ratio)))
+
+        video_bot_indices = set(random.sample(range(self.args.count), min(num_video_bots, self.args.count)))
+        log("SYS", f"Hardware Saver: {len(video_bot_indices)} of {self.args.count} bot(s) will stream active webcam video.", "MANAGER")
 
         # Shuffle and pick names (handle count > name pool)
         random.shuffle(names)
@@ -1600,105 +1669,179 @@ class BotManager:
 
         async with async_playwright() as pw:
             # Launch shared browser if not using per-bot-browser mode
-            if not self.args.per_bot_browser:
-                shared_video = video_pool_files[0] if video_pool_files else self.args.mock_video
+            if not getattr(self.args, "per_bot_browser", True):
+                shared_video = video_pool_files[0] if video_pool_files else getattr(self.args, "mock_video", "./mock_face.y4m")
                 browser_args = get_browser_args(shared_video)
                 self.browser = await pw.chromium.launch(
-                    headless=self.args.headless,
+                    headless=getattr(self.args, "headless", True),
                     args=browser_args,
                     ignore_default_args=["--enable-automation"],
                 )
                 self.browsers.append(self.browser)
-                log("OK", f"Chromium browser launched (shared instance, video: {Path(shared_video).name}).", "MANAGER")
+                vid_desc = Path(shared_video).name if shared_video and resolve_path(shared_video).exists() else "default fake stream"
+                log("OK", f"Chromium browser launched (shared instance, video: {vid_desc}).", "MANAGER")
 
-            VIEWPORTS = [
-                {"width": 1280, "height": 720},
-                {"width": 1366, "height": 768},
-                {"width": 1440, "height": 900},
-                {"width": 1536, "height": 864},
-                {"width": 1280, "height": 800},
-                {"width": 1600, "height": 900},
-                {"width": 1920, "height": 1080},
-            ]
-
-            # ── Spawn each bot ──
+            # ── Spawn initial bots ──
             for i, name in enumerate(selected_names):
-                vp = VIEWPORTS[i % len(VIEWPORTS)]
-                scale = random.choice([1.0, 1.25, 1.5])
-
-                if self.args.per_bot_browser:
-                    bot_video = video_pool_files[i % len(video_pool_files)] if video_pool_files else self.args.mock_video
-                    bot_args = get_browser_args(bot_video)
-                    b_inst = await pw.chromium.launch(
-                        headless=self.args.headless,
-                        args=bot_args,
-                        ignore_default_args=["--enable-automation"],
-                    )
-                    self.browsers.append(b_inst)
-                    context = await b_inst.new_context(
-                        permissions=["camera", "microphone"],
-                        viewport=vp,
-                        device_scale_factor=scale,
-                        user_agent=(
-                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                            "AppleWebKit/537.36 (KHTML, like Gecko) "
-                            f"Chrome/{random.randint(123, 126)}.0.0.0 Safari/537.36"
-                        ),
-                        ignore_https_errors=True,
-                    )
-                else:
-                    context = await self.browser.new_context(
-                        permissions=["camera", "microphone"],
-                        viewport=vp,
-                        device_scale_factor=scale,
-                        user_agent=(
-                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                            "AppleWebKit/537.36 (KHTML, like Gecko) "
-                            f"Chrome/{random.randint(123, 126)}.0.0.0 Safari/537.36"
-                        ),
-                        ignore_https_errors=True,
-                    )
-
-                await context.grant_permissions(["camera", "microphone"])
-
-                bot = HumanBot(
-                    name            = name,
-                    context         = context,
-                    meeting_url     = meeting_url,
-                    chat_min        = self.args.chat_min,
-                    chat_max        = self.args.chat_max,
-                    messages        = messages,
-                    timeout         = self.args.timeout,
-                    bot_index       = i,
-                    video_delay_min = self.args.video_delay_min,
-                    video_delay_max = self.args.video_delay_max,
-                )
-                self.bots.append(bot)
-
-                # Launch bot task
-                task = asyncio.create_task(bot.run())
-                self.tasks.append(task)
-
-                log("JOIN", f"Bot {i+1}/{self.args.count}: '{name}' starting...", "MANAGER")
+                is_video_bot = (i in video_bot_indices)
+                await self._spawn_single_bot(pw, i, name, meeting_url, messages, video_pool_files, is_video_bot)
 
                 # Staggered join — humans don't all join at the same time
                 if i < len(selected_names) - 1:
                     delay = random.randint(
-                        self.args.join_delay_min,
-                        self.args.join_delay_max
+                        getattr(self.args, "join_delay_min", 8),
+                        getattr(self.args, "join_delay_max", 25)
                     )
                     log("INFO", f"Next bot joins in {delay}s...", "MANAGER")
                     await asyncio.sleep(delay)
 
-            log("OK", f"All {self.args.count} bots spawned. Running...", "MANAGER")
+            # Optional dynamic camera rotation between bots
+            cycle_sec = getattr(self.args, "video_cycle_interval", 0)
+            if cycle_sec > 0 and self.args.count > 1:
+                cycle_task = asyncio.create_task(self._video_cycling_loop())
+                self.tasks.append(cycle_task)
 
-            # ── Monitor until all bots finish ──
+            log("OK", f"All {self.args.count} initial bots spawned. Watchdog active...", "MANAGER")
+
+            # ── Active Bot Supervisor / Auto-Replacement Watchdog ──
+            start_time = time.time()
+            max_timeout = getattr(self.args, "timeout", 3600)
+            auto_replace = getattr(self.args, "auto_replace", True)
+
             try:
-                await asyncio.gather(*self.tasks, return_exceptions=True)
+                while not self._shutdown.is_set():
+                    await asyncio.sleep(4)
+                    now = time.time()
+                    if now - start_time >= max_timeout:
+                        log("SYS", "Session timeout reached.", "MANAGER")
+                        break
+
+                    if auto_replace and not self._shutdown.is_set():
+                        # Inspect bot tasks and detect premature exits
+                        for i, (bot, task) in enumerate(list(zip(self.bots, self.tasks))):
+                            if task.done() and not getattr(bot, "_replacement_spawned", False) and not self._shutdown.is_set():
+                                bot._replacement_spawned = True
+                                # Only replace if meeting session is still ongoing
+                                if now - start_time < max_timeout - 20:
+                                    used_names = {b.name for b in self.bots if b.alive}
+                                    available = [n for n in names if n not in used_names]
+                                    new_name = random.choice(available) if available else f"{random.choice(names)} {len(self.bots)+1}"
+                                    log("WARN", f"🔄 Bot '{bot.name}' disconnected or exited. Spawning fresh replacement bot '{new_name}' in 4s...", "MANAGER")
+                                    await asyncio.sleep(4)
+                                    if not self._shutdown.is_set():
+                                        new_idx = len(self.bots)
+                                        is_video = (new_idx in video_bot_indices) or (getattr(self.args, "video_ratio", 1.0) >= 0.5)
+                                        await self._spawn_single_bot(pw, new_idx, new_name, meeting_url, messages, video_pool_files, is_video)
+                                        log("OK", f"✅ Replacement bot '{new_name}' deployed to maintain target farm size ({self.args.count} bots).", "MANAGER")
+
+                    if all(t.done() for t in self.tasks) and len(self.tasks) > 0 and not auto_replace:
+                        break
             except asyncio.CancelledError:
                 pass
             finally:
                 await self.shutdown()
+
+    async def _spawn_single_bot(self, pw, index: int, name: str, meeting_url: str, messages: list, video_pool_files: list, is_video_bot: bool):
+        VIEWPORTS = [
+            {"width": 1280, "height": 720},
+            {"width": 1366, "height": 768},
+            {"width": 1440, "height": 900},
+            {"width": 1536, "height": 864},
+            {"width": 1280, "height": 800},
+            {"width": 1600, "height": 900},
+            {"width": 1920, "height": 1080},
+        ]
+        vp = VIEWPORTS[index % len(VIEWPORTS)]
+        scale = random.choice([1.0, 1.25, 1.5])
+
+        if getattr(self.args, "per_bot_browser", True):
+            bot_video = video_pool_files[index % len(video_pool_files)] if video_pool_files else getattr(self.args, "mock_video", "./mock_face.y4m")
+            bot_args = get_browser_args(bot_video)
+            b_inst = await pw.chromium.launch(
+                headless=getattr(self.args, "headless", True),
+                args=bot_args,
+                ignore_default_args=["--enable-automation"],
+            )
+            self.browsers.append(b_inst)
+            context = await b_inst.new_context(
+                permissions=["camera", "microphone"],
+                viewport=vp,
+                device_scale_factor=scale,
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    f"Chrome/{random.randint(123, 126)}.0.0.0 Safari/537.36"
+                ),
+                ignore_https_errors=True,
+            )
+        else:
+            context = await self.browser.new_context(
+                permissions=["camera", "microphone"],
+                viewport=vp,
+                device_scale_factor=scale,
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    f"Chrome/{random.randint(123, 126)}.0.0.0 Safari/537.36"
+                ),
+                ignore_https_errors=True,
+            )
+
+        await context.grant_permissions(["camera", "microphone"])
+
+        bot = HumanBot(
+            name            = name,
+            context         = context,
+            meeting_url     = meeting_url,
+            chat_min        = getattr(self.args, "chat_min", 20),
+            chat_max        = getattr(self.args, "chat_max", 60),
+            messages        = messages,
+            timeout         = getattr(self.args, "timeout", 3600),
+            bot_index       = index,
+            video_delay_min = getattr(self.args, "video_delay_min", 10),
+            video_delay_max = getattr(self.args, "video_delay_max", 45),
+            video_on_min    = getattr(self.args, "video_on_min", 3),
+            video_on_max    = getattr(self.args, "video_on_max", 5),
+            video_off_min   = getattr(self.args, "video_off_min", 60),
+            video_off_max   = getattr(self.args, "video_off_max", 240),
+            video_enabled   = is_video_bot,
+        )
+        self.bots.append(bot)
+
+        # Launch bot task
+        task = asyncio.create_task(bot.run())
+        self.tasks.append(task)
+        log("JOIN", f"Bot {index+1}/{self.args.count}: '{name}' starting (webcam: {'ON' if is_video_bot else 'OFF'})...", "MANAGER")
+        return bot, task
+
+    async def _video_cycling_loop(self):
+        """Periodically rotate active webcam video between bots to simulate natural human meeting behavior."""
+        interval = getattr(self.args, "video_cycle_interval", 0)
+        if interval <= 0:
+            return
+        log("SYS", f"Dynamic camera rotation active: cycling cameras every {interval}s.", "MANAGER")
+        while True:
+            await asyncio.sleep(interval)
+            try:
+                eligible_off = [b for b in self.bots if b.alive and not b.video_enabled]
+                eligible_on = [b for b in self.bots if b.alive and b.video_enabled]
+                if eligible_off and eligible_on:
+                    turn_off_bot = random.choice(eligible_on)
+                    turn_on_bot = random.choice(eligible_off)
+
+                    turn_off_bot.video_enabled = False
+                    await turn_off_bot.turn_off_video()
+                    turn_off_bot.log("ACT", "📷 Stepped away: webcam paused")
+
+                    await asyncio.sleep(random.uniform(2.0, 5.0))
+
+                    turn_on_bot.video_enabled = True
+                    await turn_on_bot.ensure_video_on()
+                    turn_on_bot.log("ACT", "📹 Turned webcam back ON (facial expression active)")
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                log("WARN", f"Camera cycling error: {e}", "MANAGER")
 
     async def shutdown(self):
         log("SYS", "Shutting down all bots...", "MANAGER")

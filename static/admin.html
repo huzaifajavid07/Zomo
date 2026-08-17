@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zomo - User Management</title>
+    <link rel="stylesheet" href="/static/css/theme.css">
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+    <link rel="stylesheet" href="/static/css/components.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="navbar">
+            <div class="navbar-content">
+                <div style="display: flex; align-items: center; gap: 16px;">
+                    <button class="btn btn-ghost" onclick="goBack()" style="gap: 8px;">
+                        ← Back to Dashboard
+                    </button>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <div class="brand-mark" style="width: 32px; height: 32px; font-size: 0.95rem; border-radius: 8px;">Z</div>
+                        <h1 class="navbar-title" style="font-size: 20px;">Zomo — User Management</h1>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <button class="btn btn-ghost" id="themeToggleBtn" data-action="toggle-theme" onclick="toggleTheme()">
+                        ☀️ <span class="theme-text">Light Mode</span>
+                    </button>
+                    <button class="btn btn-primary" onclick="openCreateUserModal()">
+                        + Create User
+                    </button>
+                    <button class="btn btn-danger" onclick="logoutAdmin()">
+                        Logout
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content" style="grid-template-columns: 1fr;">
+            <section class="column">
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">All Users</h2>
+                        <input type="text" id="searchUsers" placeholder="Search by email or name..." 
+                               style="padding: 10px 14px; border: 1px solid var(--border-default); border-radius: var(--radius-md); background-color: var(--bg-secondary); color: var(--text-primary); width: 280px; font-size: 13px;">
+                    </div>
+
+                    <div class="table-wrapper">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Email</th>
+                                    <th>Name</th>
+                                    <th>Role</th>
+                                    <th>Status</th>
+                                    <th>Created</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="usersTableBody">
+                                <!-- Populated by JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Create/Edit User Modal -->
+    <div id="userModal" class="modal">
+        <div class="modal-content" style="max-width: 540px;">
+            <div class="modal-header">
+                <h3 id="modalTitle">Create New User</h3>
+                <button class="modal-close" onclick="closeUserModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="userForm">
+                    <div class="form-group">
+                        <label for="userEmail">Email Address</label>
+                        <input type="email" id="userEmail" name="email" placeholder="user@example.com" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="userName">Full Name</label>
+                        <input type="text" id="userName" name="name" placeholder="John Doe" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="userRole">Account Role</label>
+                        <select id="userRole" name="role" required>
+                            <option value="user" selected>Standard User</option>
+                            <option value="superadmin">Super Admin</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group" id="passwordGroup">
+                        <label for="userPassword">Password</label>
+                        <input type="password" id="userPassword" name="password" placeholder="••••••••" required>
+                    </div>
+
+                    <div class="form-actions" style="flex-direction: row; gap: 12px; margin-top: 20px;">
+                        <button type="submit" class="btn btn-primary" style="flex: 1;">Save User</button>
+                        <button type="button" class="btn btn-danger" onclick="closeUserModal()" style="flex: 1;">Cancel</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div id="deleteModal" class="modal">
+        <div class="modal-content" style="max-width: 420px;">
+            <div class="modal-header">
+                <h3>Delete User</h3>
+                <button class="modal-close" onclick="closeDeleteModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom: 20px; color: var(--text-secondary); line-height: 1.5; font-size: 14px;">
+                    Are you sure you want to delete this user? This action cannot be undone.
+                </p>
+                <div class="form-actions" style="flex-direction: row; gap: 12px;">
+                    <button class="btn btn-danger" onclick="confirmDelete()" style="flex: 1;">Delete</button>
+                    <button class="btn btn-ghost" onclick="closeDeleteModal()" style="flex: 1;">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="/static/utils/helpers.js"></script>
+    <script src="/static/js/admin.js"></script>
+</body>
+</html>

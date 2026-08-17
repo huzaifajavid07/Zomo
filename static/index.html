@@ -1,641 +1,197 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Zomo - Next-Gen Zoom Bot Automation Studio. Control, monitor, and automate Zoom meetings with a sleek dashboard.">
-  <title>Zomo — Zoom Bot Automation Studio</title>
-  <link rel="stylesheet" href="/static/css/main.css">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zomo - Dashboard</title>
+    <link rel="stylesheet" href="/static/css/theme.css">
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+    <link rel="stylesheet" href="/static/css/components.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
 </head>
 <body>
-
-<div class="app-container">
-
-  <!-- ═══════ HEADER ═══════ -->
-  <header class="header">
-    <div class="header-brand">
-      <div class="header-logo">Z</div>
-      <div>
-        <div class="header-title">Zomo</div>
-        <div class="header-subtitle">Zoom Bot Automation Studio</div>
-      </div>
-    </div>
-    <div class="header-actions">
-      <div class="status-badge" id="statusBadge" data-state="idle">
-        <span class="status-dot"></span>
-        <span id="statusText">Idle</span>
-      </div>
-    </div>
-  </header>
-
-  <!-- ═══════ METRICS ROW ═══════ -->
-  <div class="metrics-row">
-    <div class="metric-card">
-      <div class="metric-label"><span class="icon">⏱</span> Elapsed Time</div>
-      <div class="metric-value" id="metricElapsed">00:00</div>
-      <div class="metric-sub">Since bot started</div>
-    </div>
-    <div class="metric-card">
-      <div class="metric-label"><span class="icon">💬</span> Messages Sent</div>
-      <div class="metric-value accent-green" id="metricMessages">0</div>
-      <div class="metric-sub">Random chat messages</div>
-    </div>
-    <div class="metric-card">
-      <div class="metric-label"><span class="icon">⏳</span> Next Action</div>
-      <div class="metric-value accent-amber" id="metricNextAction">—</div>
-      <div class="metric-sub" id="metricNextLabel">Waiting to start</div>
-    </div>
-    <div class="metric-card">
-      <div class="metric-label"><span class="icon">🎥</span> Camera</div>
-      <div class="metric-value accent-cyan" id="metricCamera">OFF</div>
-      <div class="metric-sub" id="metricCamSub">Virtual camera feed</div>
-    </div>
-  </div>
-
-  <!-- ═══════ CONTROL BAR ═══════ -->
-  <div class="control-bar">
-    <button class="btn btn-success btn-lg" id="btnStart" onclick="App.startBot()">
-      ▶ Start Bot
-    </button>
-    <button class="btn btn-warning" id="btnPause" onclick="App.pauseBot()" disabled>
-      ⏸ Pause
-    </button>
-    <button class="btn btn-danger" id="btnStop" onclick="App.stopBot()" disabled>
-      ⏹ Stop
-    </button>
-    <div class="divider"></div>
-    <button class="btn btn-ghost btn-sm" onclick="App.clearLogs()">
-      🗑 Clear Logs
-    </button>
-    <div class="sim-badge" id="simBadge" style="display: none;">
-      🧪 Simulation Mode
-    </div>
-  </div>
-
-  <!-- ═══════ TABS ═══════ -->
-  <div class="tabs" id="mainTabs">
-    <button class="tab active" data-tab="multibot" onclick="App.switchTab('multibot')">🚀 Multi-Bot Farm</button>
-    <button class="tab" data-tab="controls" onclick="App.switchTab('controls')">⚙️ Desktop Engine</button>
-    <button class="tab" data-tab="messages" onclick="App.switchTab('messages')">💬 Messages</button>
-    <button class="tab" data-tab="calibration" onclick="App.switchTab('calibration')">🎯 Calibration</button>
-    <button class="tab" data-tab="guide" onclick="App.switchTab('guide')">📖 OBS Guide</button>
-  </div>
-
-  <!-- ═══════ TAB: Multi-Bot Farm ═══════ -->
-  <div class="tab-content active" id="tab-multibot">
-    
-    <!-- Hero Meeting Join Bar -->
-    <div class="hero-card">
-      <div class="hero-card-header">
-        <div class="hero-card-title">⚡ Meeting Setup & Quick Launch</div>
-        <div class="hero-card-subtitle">Paste your Zoom Meeting link or ID to spawn realistic browser-based participants</div>
-      </div>
-      <div class="hero-input-row">
-        <div class="input-with-icon">
-          <span class="input-icon">🔗</span>
-          <input type="text" id="mbMeetingUrl" class="text-input text-input-lg" 
-                 placeholder="https://zoom.us/j/1234567890?pwd=... or Meeting ID (e.g. 987654321)"
-                 value="">
-        </div>
-        <button class="btn btn-ghost" onclick="App.pasteMeetingUrl()">📋 Paste Link</button>
-      </div>
-
-      <!-- Optimum Quick Presets Bar -->
-      <div class="presets-quick-bar">
-        <span class="presets-label">✨ Optimum Presets:</span>
-        <button class="btn btn-chip active" id="presetStandard" onclick="App.applyMultiPreset('standard')">
-          🚀 Standard (5 Bots, 15-45s)
-        </button>
-        <button class="btn btn-chip" id="presetDemo" onclick="App.applyMultiPreset('demo')">
-          ⚡ Quick Demo (3 Bots, 15-30s)
-        </button>
-        <button class="btn btn-chip" id="presetCrowd" onclick="App.applyMultiPreset('crowd')">
-          🔥 Active Crowd (12 Bots, 10-25s)
-        </button>
-        <button class="btn btn-chip" id="presetWebinar" onclick="App.applyMultiPreset('webinar')">
-          🎓 Webinar Farm (25 Bots, 20-60s)
-        </button>
-      </div>
-    </div>
-
-    <div class="grid-2" style="margin-top: 24px;">
-      
-      <!-- Customization Panel -->
-      <div class="panel">
-        <div class="panel-header">
-          <div>
-            <div class="panel-title"><span class="icon">🎛️</span> Bot Configuration & Customization</div>
-            <div class="panel-description">Customize bot count, chat timing, join spacing & media behavior</div>
-          </div>
-        </div>
-
-        <!-- Bot Count Slider & Input -->
-        <div class="slider-group">
-          <div class="slider-header">
-            <span class="slider-label">👥 Number of Bots</span>
-            <span class="slider-value accent-cyan" id="valMbCount">5 Bots</span>
-          </div>
-          <div class="range-with-number">
-            <input type="range" id="sliderMbCount" min="1" max="50" value="5"
-                   oninput="App.updateMultiSlider('count', this.value)">
-            <input type="number" id="numMbCount" class="num-input" min="1" max="50" value="5"
-                   onchange="App.updateMultiSlider('count', this.value)">
-          </div>
-        </div>
-
-        <!-- Chat Interval (Min/Max) -->
-        <div class="grid-2-compact" style="margin-top: 16px;">
-          <div class="slider-group">
-            <div class="slider-header">
-              <span class="slider-label">💬 Min Chat Delay</span>
-              <span class="slider-value" id="valMbChatMin">15s</span>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="navbar">
+            <div class="navbar-content">
+                <div style="display: flex; align-items: center; gap: 14px;">
+                    <div class="brand-mark" style="width: 38px; height: 38px; font-size: 1.1rem; border-radius: 10px; font-weight: 800;">Z</div>
+                    <div style="display: flex; flex-direction: column;">
+                        <span style="font-size: 20px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.5px;">Zomo</span>
+                        <span style="font-size: 11px; color: var(--text-muted); font-weight: 500;">Meeting Bot Dashboard</span>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <button class="btn btn-ghost" id="themeToggleBtn" data-action="toggle-theme" onclick="toggleTheme()">
+                        ☀️ <span class="theme-text">Light Mode</span>
+                    </button>
+                    <button class="btn btn-ghost" data-action="go-admin">
+                        👥 User Management
+                    </button>
+                    <button class="btn-settings" data-action="user-settings" onclick="openUserSettings()">
+                        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                            <circle cx="12" cy="12" r="3"></circle>
+                            <path d="M12 1v6m0 6v6M4.22 4.22l4.24 4.24m5.08 0l4.24-4.24M1 12h6m6 0h6m-1.78 7.78l-4.24-4.24m-5.08 0l-4.24 4.24"></path>
+                        </svg>
+                        User Settings
+                    </button>
+                    <button class="btn btn-danger" data-action="logout-dashboard">
+                        Logout
+                    </button>
+                </div>
             </div>
-            <input type="range" id="sliderMbChatMin" min="5" max="120" value="15"
-                   oninput="App.updateMultiSlider('chatMin', this.value)">
-          </div>
-          <div class="slider-group">
-            <div class="slider-header">
-              <span class="slider-label">💬 Max Chat Delay</span>
-              <span class="slider-value" id="valMbChatMax">45s</span>
-            </div>
-            <input type="range" id="sliderMbChatMax" min="10" max="300" value="45"
-                   oninput="App.updateMultiSlider('chatMax', this.value)">
-          </div>
-        </div>
+        </header>
 
-        <!-- Join Stagger Delay (Min/Max) -->
-        <div class="grid-2-compact" style="margin-top: 16px;">
-          <div class="slider-group">
-            <div class="slider-header">
-              <span class="slider-label">⏳ Min Join Spacing</span>
-              <span class="slider-value" id="valMbJoinMin">5s</span>
-            </div>
-            <input type="range" id="sliderMbJoinMin" min="1" max="60" value="5"
-                   oninput="App.updateMultiSlider('joinMin', this.value)">
-          </div>
-          <div class="slider-group">
-            <div class="slider-header">
-              <span class="slider-label">⏳ Max Join Spacing</span>
-              <span class="slider-value" id="valMbJoinMax">15s</span>
-            </div>
-            <input type="range" id="sliderMbJoinMax" min="3" max="120" value="15"
-                   oninput="App.updateMultiSlider('joinMax', this.value)">
-          </div>
-        </div>
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Left Column: Meetings Table -->
+            <section class="column column-left">
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">All Meetings</h2>
+                        <button class="btn btn-primary" onclick="downloadTodayDetails()" style="font-size: 11px; padding: 8px 12px;">
+                            DOWNLOAD TODAY'S DETAILS
+                        </button>
+                    </div>
 
-        <!-- Toggles -->
-        <div style="margin-top: 20px; border-top: 1px solid var(--border-subtle); padding-top: 16px;">
-          <div class="toggle-row">
-            <div class="toggle-info">
-              <div class="toggle-title">📹 Auto Camera Feed</div>
-              <div class="toggle-desc">Stream synthetic face animations on webcam</div>
-            </div>
-            <label class="toggle-switch">
-              <input type="checkbox" id="mbToggleCamera" checked>
-              <span class="toggle-slider"></span>
-            </label>
-          </div>
+                    <div class="table-wrapper">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Meeting ID</th>
+                                    <th>Bots</th>
+                                    <th>Start Time</th>
+                                    <th>Timeout</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="meetingsTableBody">
+                                <!-- Populated by JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
 
-          <div class="toggle-row">
-            <div class="toggle-info">
-              <div class="toggle-title">🕵️ Headless Execution</div>
-              <div class="toggle-desc">Run browsers silently in background</div>
-            </div>
-            <label class="toggle-switch">
-              <input type="checkbox" id="mbToggleHeadless" checked>
-              <span class="toggle-slider"></span>
-            </label>
-          </div>
+            <!-- Middle Column: Bot Configuration Form -->
+            <section class="column column-middle">
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">Add Bot Participant</h2>
+                    </div>
 
-          <div class="toggle-row">
-            <div class="toggle-info">
-              <div class="toggle-title">🌐 Per-Bot Browser Process</div>
-              <div class="toggle-desc">Independent browser process per bot (more RAM)</div>
-            </div>
-            <label class="toggle-switch">
-              <input type="checkbox" id="mbTogglePerBotBrowser">
-              <span class="toggle-slider"></span>
-            </label>
-          </div>
-        </div>
-      </div>
+                    <form class="config-form" id="botConfigForm">
+                        <div class="form-group">
+                            <label for="meetingId">Meeting ID or URL</label>
+                            <input type="text" id="meetingId" name="meetingId" placeholder="e.g., 950 8442 2783 or Zoom URL" required>
+                        </div>
 
-      <!-- Messages & Control Actions Panel -->
-      <div class="panel">
-        <div class="panel-header">
-          <div>
-            <div class="panel-title"><span class="icon">💬</span> Chat Content & Launch Control</div>
-            <div class="panel-description">Set custom messages or pick a preset, then launch</div>
-          </div>
-        </div>
+                        <div class="form-group">
+                            <label for="meetingPassword">Meeting Password (Passcode)</label>
+                            <input type="password" id="meetingPassword" name="meetingPassword" placeholder="Enter meeting passcode (optional)">
+                        </div>
 
-        <div class="form-label" style="margin-bottom: 8px;">Custom Chat Messages (One per line)</div>
-        <textarea id="mbCustomMessages" class="custom-textarea" rows="6" 
-                  placeholder="Hi everyone! 😊&#10;Great presentation!&#10;Totally agree with that.&#10;Thanks for sharing."></textarea>
-        <div class="metric-sub" style="margin-top: 4px;">Leave blank to use built-in realistic message pool.</div>
+                        <div class="form-group">
+                            <label for="botUsersCount">Bot Users Count</label>
+                            <input type="number" id="botUsersCount" name="botUsersCount" placeholder="5" min="1" max="50" value="5" required>
+                        </div>
 
-        <!-- Big Launch Buttons -->
-        <div class="action-card-buttons" style="margin-top: 24px;">
-          <button class="btn btn-success btn-xl glow-btn" id="btnLaunchFarm" onclick="App.startMultiBot()">
-            🚀 Launch Bot Farm (<span id="btnFarmBotCount">5</span> Bots)
-          </button>
-          <button class="btn btn-danger btn-lg" id="btnStopFarm" onclick="App.stopMultiBot()" disabled>
-            ⏹ Stop Farm
-          </button>
-        </div>
-      </div>
+                        <div class="form-group">
+                            <label for="nameLocale">Name Locale</label>
+                            <input type="text" id="nameLocale" name="nameLocale" placeholder="e.g., en-US" value="en-US">
+                        </div>
 
+                        <div class="form-group">
+                            <label for="timeout">Timeout (in Minutes)</label>
+                            <input type="number" id="timeout" name="timeout" placeholder="60" min="1" value="60" required>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="vcType">VC Type (Video Conference Type)</label>
+                            <select id="vcType" name="vcType" required>
+                                <option value="zoom">Zoom Meeting</option>
+                                <option value="google">Google Meet</option>
+                                <option value="jitsi">Jitsi</option>
+                            </select>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">SUBMIT & LAUNCH</button>
+                            <button type="reset" class="btn btn-danger">CANCEL</button>
+                        </div>
+                    </form>
+                </div>
+            </section>
+
+            <!-- Right Column: Analytics Chart -->
+            <section class="column column-right">
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">Bot Status Distribution</h2>
+                    </div>
+
+                    <div class="chart-container">
+                        <canvas id="statusChart"></canvas>
+                    </div>
+
+                    <div class="chart-legend">
+                        <div class="legend-item">
+                            <span class="legend-dot" style="background-color: #10b981;"></span>
+                            <span>Active</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-dot" style="background-color: #f59e0b;"></span>
+                            <span>Queued</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-dot" style="background-color: #3b82f6;"></span>
+                            <span>Completed</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-dot" style="background-color: #ef4444;"></span>
+                            <span>Failed</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
     </div>
 
-    <!-- Active Bot Farm Monitoring Cards -->
-    <div class="panel" style="margin-top: 24px;">
-      <div class="panel-header">
-        <div>
-          <div class="panel-title"><span class="icon">🌐</span> Live Bot Farm Status Grid</div>
-          <div class="panel-description" id="farmStatusDesc">No active bot farm running</div>
-        </div>
-      </div>
-      
-      <div class="bot-grid" id="botFarmGrid">
-        <div class="empty-state">
-          <div class="empty-icon">🤖</div>
-          <div class="empty-title">Farm Idle</div>
-          <div class="empty-desc">Enter meeting link and click <strong>Launch Bot Farm</strong> to start.</div>
-        </div>
-      </div>
-    </div>
-
-  </div>
-
-  <!-- ═══════ TAB: Controls ═══════ -->
-  <div class="tab-content" id="tab-controls">
-    <div class="grid-2">
-      <!-- Timing Configuration -->
-      <div class="panel">
-        <div class="panel-header">
-          <div>
-            <div class="panel-title"><span class="icon">⏱</span> Timing Configuration</div>
-            <div class="panel-description">Adjust delays to mimic human behavior</div>
-          </div>
-        </div>
-
-        <div class="slider-group">
-          <div class="slider-header">
-            <span class="slider-label">Min Chat Interval</span>
-            <span class="slider-value" id="valMinChat">15s</span>
-          </div>
-          <input type="range" id="sliderMinChat" min="5" max="120" value="15"
-                 oninput="App.updateSlider('minChat', this.value)">
-        </div>
-
-        <div class="slider-group">
-          <div class="slider-header">
-            <span class="slider-label">Max Chat Interval</span>
-            <span class="slider-value" id="valMaxChat">45s</span>
-          </div>
-          <input type="range" id="sliderMaxChat" min="10" max="300" value="45"
-                 oninput="App.updateSlider('maxChat', this.value)">
-        </div>
-
-        <div class="slider-group">
-          <div class="slider-header">
-            <span class="slider-label">Min Camera Delay</span>
-            <span class="slider-value" id="valMinCam">30s</span>
-          </div>
-          <input type="range" id="sliderMinCam" min="5" max="180" value="30"
-                 oninput="App.updateSlider('minCam', this.value)">
-        </div>
-
-        <div class="slider-group">
-          <div class="slider-header">
-            <span class="slider-label">Max Camera Delay</span>
-            <span class="slider-value" id="valMaxCam">90s</span>
-          </div>
-          <input type="range" id="sliderMaxCam" min="10" max="600" value="90"
-                 oninput="App.updateSlider('maxCam', this.value)">
-        </div>
-
-        <div class="slider-group">
-          <div class="slider-header">
-            <span class="slider-label">Mouse Jitter (px)</span>
-            <span class="slider-value" id="valJitter">2.0</span>
-          </div>
-          <input type="range" id="sliderJitter" min="0" max="10" step="0.5" value="2"
-                 oninput="App.updateSlider('jitter', this.value)">
-        </div>
-      </div>
-
-      <!-- Execution Settings -->
-      <div class="panel">
-        <div class="panel-header">
-          <div>
-            <div class="panel-title"><span class="icon">🚀</span> Execution Settings</div>
-            <div class="panel-description">Control how the bot interacts with Zoom</div>
-          </div>
-        </div>
-
-        <!-- Execution Mode -->
-        <div class="form-label" style="margin-bottom: 10px;">Execution Mode</div>
-        <div class="mode-selector">
-          <div class="mode-card active" id="modeShortcut" onclick="App.setMode('shortcut')">
-            <div class="mode-card-icon">⌨️</div>
-            <div class="mode-card-title">Keyboard Shortcuts</div>
-            <div class="mode-card-desc">Alt+V, Alt+H — More reliable</div>
-          </div>
-          <div class="mode-card" id="modeCoordinate" onclick="App.setMode('coordinate')">
-            <div class="mode-card-icon">🖱️</div>
-            <div class="mode-card-title">Screen Coordinates</div>
-            <div class="mode-card-desc">Click X,Y positions on screen</div>
-          </div>
-        </div>
-
-        <!-- Toggles -->
-        <div class="toggle-row">
-          <div class="toggle-info">
-            <div class="toggle-title">Skip Join Button</div>
-            <div class="toggle-desc">Enable if already inside the meeting</div>
-          </div>
-          <label class="toggle-switch">
-            <input type="checkbox" id="toggleSkipJoin" onchange="App.updateToggle()">
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-
-        <div class="toggle-row">
-          <div class="toggle-info">
-            <div class="toggle-title">Auto Camera</div>
-            <div class="toggle-desc">Automatically enable camera after delay</div>
-          </div>
-          <label class="toggle-switch">
-            <input type="checkbox" id="toggleAutoCamera" checked onchange="App.updateToggle()">
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-
-        <div class="toggle-row">
-          <div class="toggle-info">
-            <div class="toggle-title">Auto Chat</div>
-            <div class="toggle-desc">Send random chat messages at intervals</div>
-          </div>
-          <label class="toggle-switch">
-            <input type="checkbox" id="toggleAutoChat" checked onchange="App.updateToggle()">
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-
-        <div class="toggle-row">
-          <div class="toggle-info">
-            <div class="toggle-title">🧪 Simulation Mode</div>
-            <div class="toggle-desc">Dry run — no actual mouse/keyboard actions</div>
-          </div>
-          <label class="toggle-switch">
-            <input type="checkbox" id="toggleSimulation" onchange="App.updateToggle()">
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ═══════ TAB: Messages ═══════ -->
-  <div class="tab-content" id="tab-messages">
-    <div class="grid-2">
-      <!-- Preset Selector -->
-      <div class="panel">
-        <div class="panel-header">
-          <div>
-            <div class="panel-title"><span class="icon">📦</span> Message Presets</div>
-            <div class="panel-description">Select a preset or create your own</div>
-          </div>
-        </div>
-        <div class="preset-grid" id="presetGrid">
-          <!-- Populated by JS -->
-        </div>
-      </div>
-
-      <!-- Message Editor -->
-      <div class="panel">
-        <div class="panel-header">
-          <div>
-            <div class="panel-title"><span class="icon">✏️</span> Active Messages</div>
-            <div class="panel-description" id="activePresetName">Select a preset to view messages</div>
-          </div>
-          <span class="btn btn-ghost btn-sm" onclick="App.saveConfig()">💾 Save</span>
-        </div>
-        <ul class="message-list" id="messageList">
-          <!-- Populated by JS -->
-        </ul>
-        <div class="message-add-row">
-          <input type="text" class="form-input" id="newMessageInput"
-                 placeholder="Type a new message..." 
-                 onkeydown="if(event.key==='Enter') App.addMessage()">
-          <button class="btn btn-primary btn-sm" onclick="App.addMessage()">+ Add</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ═══════ TAB: Calibration ═══════ -->
-  <div class="tab-content" id="tab-calibration">
-    <div class="grid-2">
-      <!-- Coordinate Editor -->
-      <div class="panel">
-        <div class="panel-header">
-          <div>
-            <div class="panel-title"><span class="icon">🎯</span> Screen Coordinates</div>
-            <div class="panel-description">Set pixel positions for Zoom UI elements</div>
-          </div>
-        </div>
-
-        <div class="res-presets" id="resPresets">
-          <button class="res-btn active" onclick="App.loadResPreset('1920x1080')">1920×1080</button>
-          <button class="res-btn" onclick="App.loadResPreset('2560x1440')">2560×1440</button>
-          <button class="res-btn" onclick="App.loadResPreset('3840x2160')">3840×2160</button>
-        </div>
-
-        <div class="form-group">
-          <div class="form-label">Join Button</div>
-          <div class="coord-group">
-            <span class="coord-label-small">X</span>
-            <input type="number" class="coord-input" id="coordJoinX" value="960">
-            <span class="coord-label-small">Y</span>
-            <input type="number" class="coord-input" id="coordJoinY" value="550">
-          </div>
-        </div>
-
-        <div class="form-group">
-          <div class="form-label">Chat Icon</div>
-          <div class="coord-group">
-            <span class="coord-label-small">X</span>
-            <input type="number" class="coord-input" id="coordChatX" value="850">
-            <span class="coord-label-small">Y</span>
-            <input type="number" class="coord-input" id="coordChatY" value="1000">
-          </div>
-        </div>
-
-        <div class="form-group">
-          <div class="form-label">Camera Icon</div>
-          <div class="coord-group">
-            <span class="coord-label-small">X</span>
-            <input type="number" class="coord-input" id="coordCamX" value="200">
-            <span class="coord-label-small">Y</span>
-            <input type="number" class="coord-input" id="coordCamY" value="1000">
-          </div>
-        </div>
-
-        <div class="form-group">
-          <div class="form-label">Chat Input Box</div>
-          <div class="coord-group">
-            <span class="coord-label-small">X</span>
-            <input type="number" class="coord-input" id="coordInputX" value="400">
-            <span class="coord-label-small">Y</span>
-            <input type="number" class="coord-input" id="coordInputY" value="950">
-          </div>
-        </div>
-
-        <button class="btn btn-primary" onclick="App.saveCoordinates()" style="margin-top: 12px;">
-          💾 Save Coordinates
-        </button>
-      </div>
-
-      <!-- Mouse Position Helper -->
-      <div class="panel">
-        <div class="panel-header">
-          <div>
-            <div class="panel-title"><span class="icon">🖱️</span> Mouse Position Tracker</div>
-            <div class="panel-description">Live cursor position from your system</div>
-          </div>
-        </div>
-
-        <div style="text-align: center; padding: 32px 0;">
-          <div class="metric-value accent-cyan" id="mousePos" style="font-size: 36px;">—, —</div>
-          <div class="metric-sub" style="margin-top: 8px;">Current cursor X, Y</div>
-        </div>
-
-        <button class="btn btn-ghost" id="btnTrackMouse" onclick="App.toggleMouseTracker()" style="width: 100%;">
-          🔴 Start Tracking
-        </button>
-
-        <div style="margin-top: 20px; padding: 16px; background: var(--bg-deep); border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
-          <div style="font-size: 13px; font-weight: 700; color: var(--text-secondary); margin-bottom: 8px;">💡 How to Calibrate</div>
-          <ol style="font-size: 12px; color: var(--text-muted); padding-left: 20px; line-height: 1.8;">
-            <li>Open Zoom and position it on your screen</li>
-            <li>Click <strong>Start Tracking</strong> above</li>
-            <li>Hover over each Zoom UI element (Join, Chat, Camera)</li>
-            <li>Note the X, Y values and enter them in the fields</li>
-            <li>Click <strong>Save Coordinates</strong></li>
-          </ol>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ═══════ TAB: OBS Guide ═══════ -->
-  <div class="tab-content" id="tab-guide">
-    <div class="panel">
-      <div class="panel-header">
-        <div>
-          <div class="panel-title"><span class="icon">📖</span> OBS Virtual Camera Setup Guide</div>
-          <div class="panel-description">Step-by-step instructions to set up your virtual camera feed</div>
-        </div>
-      </div>
-
-      <div class="guide-steps">
-        <div class="guide-step">
-          <div class="guide-step-num">1</div>
-          <div class="guide-step-content">
-            <div class="guide-step-title">Install OBS Studio</div>
-            <div class="guide-step-desc">
-              Download and install <a href="https://obsproject.com/" target="_blank">OBS Studio</a> from the official website. 
-              OBS is free, open-source, and works on Windows, macOS, and Linux.
+    <!-- Modal for Edit -->
+    <div id="editModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitle">Edit Meeting</h3>
+                <button class="modal-close" onclick="closeEditModal()" aria-label="Close">&times;</button>
             </div>
-          </div>
-        </div>
-
-        <div class="guide-step">
-          <div class="guide-step-num">2</div>
-          <div class="guide-step-content">
-            <div class="guide-step-title">Create a New Scene</div>
-            <div class="guide-step-desc">
-              In OBS, click <code>+</code> under Scenes to create a new scene (e.g., "Zoom Bot"). 
-              This scene will hold your fake video feed source.
+            <div class="modal-body">
+                <form id="editForm">
+                    <div class="form-group">
+                        <label for="editMeetingId">Meeting ID</label>
+                        <input type="text" id="editMeetingId" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="editBotCount">Bot Users Count</label>
+                        <input type="number" id="editBotCount" min="1" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="editTimeout">Timeout (minutes)</label>
+                        <input type="number" id="editTimeout" min="1" required>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">UPDATE</button>
+                        <button type="button" class="btn btn-danger" onclick="closeEditModal()">CLOSE</button>
+                    </div>
+                </form>
             </div>
-          </div>
         </div>
-
-        <div class="guide-step">
-          <div class="guide-step-num">3</div>
-          <div class="guide-step-content">
-            <div class="guide-step-title">Add a Video Source</div>
-            <div class="guide-step-desc">
-              Under Sources, click <code>+</code> and choose one of:
-              <br>• <strong>Media Source</strong> — for a looping video file of a person
-              <br>• <strong>Image</strong> — for a static photo
-              <br>• <strong>Video Capture Device</strong> — for a real or secondary webcam
-              <br>Resize and position the source to fill the canvas.
-            </div>
-          </div>
-        </div>
-
-        <div class="guide-step">
-          <div class="guide-step-num">4</div>
-          <div class="guide-step-content">
-            <div class="guide-step-title">Start Virtual Camera</div>
-            <div class="guide-step-desc">
-              In the OBS Controls panel (bottom right), click <code>Start Virtual Camera</code>. 
-              This makes OBS output appear as a webcam device that Zoom can select.
-            </div>
-          </div>
-        </div>
-
-        <div class="guide-step">
-          <div class="guide-step-num">5</div>
-          <div class="guide-step-content">
-            <div class="guide-step-title">Configure Zoom to Use OBS</div>
-            <div class="guide-step-desc">
-              In Zoom Desktop Client, go to <code>Settings → Video</code> and select 
-              <strong>"OBS Virtual Camera"</strong> from the camera dropdown. 
-              You should see your OBS scene preview in the Zoom settings window.
-            </div>
-          </div>
-        </div>
-
-        <div class="guide-step">
-          <div class="guide-step-num">6</div>
-          <div class="guide-step-content">
-            <div class="guide-step-title">Run Zomo Bot</div>
-            <div class="guide-step-desc">
-              With OBS Virtual Camera running and Zoom configured, go to the 
-              <strong>Controls</strong> tab and click <strong>Start Bot</strong>. 
-              Zomo will join the meeting, enable the camera (showing your OBS feed), and start chatting!
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
-  </div>
 
-  <!-- ═══════ LOG CONSOLE ═══════ -->
-  <div class="log-console">
-    <div class="log-console-header">
-      <div class="log-console-title">
-        <span class="live-dot" id="wsIndicator"></span>
-        Terminal — Live Activity Stream
-      </div>
-      <button class="btn btn-ghost btn-sm" onclick="App.clearLogs()">Clear</button>
-    </div>
-    <div class="log-console-body" id="logConsole">
-      <div class="log-entry">
-        <span class="log-time">--:--:--</span>
-        <span class="log-level info">SYSTEM</span>
-        <span class="log-msg">Zomo dashboard loaded. Configure settings and click Start Bot.</span>
-      </div>
-    </div>
-  </div>
-
-</div>
-
-<script src="/static/js/app.js"></script>
+    <!-- Scripts -->
+    <script src="/static/utils/helpers.js"></script>
+    <script src="/static/js/dashboard.js"></script>
+    <script src="/static/js/analytics.js"></script>
 </body>
 </html>

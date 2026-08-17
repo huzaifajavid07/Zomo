@@ -55,10 +55,17 @@ const App = (() => {
   // ── Bot Control ────────────────────────────────────────
   async function startBot() {
     await saveConfig();
-    const result = await api('/bot/start', 'POST');
-    if (result) {
+    const payload = {
+      engine: config?.execution?.engine || 'desktop',
+      bot_count: parseInt($('#botCount')?.value || 1, 10),
+      meeting_url: $('#meetingUrl')?.value || config?.meeting_url || '',
+    };
+    const result = await api('/bot/start', 'POST', payload);
+    if (result && result.status !== 'error') {
       addLogEntry({ timestamp: now(), level: 'info', message: result.message || 'Bot started.' });
       updateControlButtons('running');
+    } else if (result && result.message) {
+      addLogEntry({ timestamp: now(), level: 'error', message: result.message });
     }
   }
 

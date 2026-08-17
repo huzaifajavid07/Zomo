@@ -5,6 +5,7 @@ Handles loading, saving, and validating JSON configuration for the Zoom Bot engi
 
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -31,6 +32,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "chat_input": {"x": 400, "y": 950},
     },
     "execution": {
+        "engine": "desktop",  # "desktop" or "web_farm"
         "mode": "shortcut",  # "shortcut" or "coordinate"
         "skip_join": False,
         "auto_camera": True,
@@ -45,6 +47,17 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "active_preset": "casual",
     "custom_messages": [],
 }
+
+
+def is_valid_preset_name(name: str) -> bool:
+    """Validate preset name against path traversal and special characters."""
+    if not name or not isinstance(name, str):
+        return False
+    name_clean = name.strip()
+    if not name_clean or len(name_clean) > 64:
+        return False
+    # Allow alphanumeric, underscores, hyphens, spaces
+    return bool(re.match(r"^[a-zA-Z0-9_\-\s]+$", name_clean))
 
 
 def deep_merge(base: dict, override: dict) -> dict:
@@ -98,13 +111,22 @@ def load_presets() -> Dict[str, Any]:
 
 
 def save_preset(name: str, messages: List[str], description: str = "") -> None:
-    """Save a custom preset to disk."""
+    """Save a custom preset to disk with path traversal defense."""
+    if not is_valid_preset_name(name):
+        raise ValueError(f"Invalid preset name '{name}'. Only alphanumeric characters, underscores, hyphens, and spaces (max 64 chars) are allowed.")
+
+    clean_name = name.strip()
     PRESETS_DIR.mkdir(parents=True, exist_ok=True)
-    filepath = PRESETS_DIR / f"{name}.json"
+    filepath = (PRESETS_DIR / f"{clean_name}.json").resolve()
+
+    # Ensure resolved filepath is strictly inside PRESETS_DIR
+    if PRESETS_DIR.resolve() not in filepath.parents:
+        raise ValueError(f"Path traversal detected for preset name '{name}'.")
+
     data = {
         "presets": {
-            name: {
-                "name": name,
+            clean_name: {
+                "name": clean_name,
                 "description": description,
                 "messages": messages,
             }
@@ -114,7 +136,7 @@ def save_preset(name: str, messages: List[str], description: str = "") -> None:
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
     except IOError as e:
-        print(f"[ConfigManager] Error saving preset {name}: {e}")
+        print(f"[ConfigManager] Error saving preset {clean_name}: {e}")
 
 
 def get_active_messages(config: Dict[str, Any]) -> List[str]:

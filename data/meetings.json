@@ -1,0 +1,26 @@
+[
+  {
+    "meetingId": "https://us05web.zoom.us/j/82199375854?pwd=TLEASdAW167i95tkgbITesBdSRoJDv.1",
+    "botCount": 5,
+    "timeout": 60,
+    "vcType": "zoom",
+    "status": "active",
+    "startTime": "15:43",
+    "id": "b155010c",
+    "userId": "1",
+    "userEmail": "admin@example.com",
+    "created_at": 1786963394.1034844
+  },
+  {
+    "meetingId": "https://us05web.zoom.us/j/84159296605?pwd=8OOy2SYfF2mid7C6YLdtbsS3boJ7bM.1",
+    "botCount": 5,
+    "timeout": 60,
+    "vcType": "zoom",
+    "status": "active",
+    "startTime": "15:35",
+    "id": "da4e05da",
+    "userId": "1",
+    "userEmail": "admin@example.com",
+    "created_at": 1786962908.209505
+  }
+]

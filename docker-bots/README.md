@@ -75,24 +75,33 @@ All settings can be configured via environment variables in `.env` or passed dir
 5. Periodically opens the chat panel and types random messages with human-like delays
 6. Monitors for meeting-end signals and exits gracefully
 
-## Mock Video
+## Facial Expression Dataset Video Pipeline
 
-The Dockerfile automatically generates a synthetic Y4M video at build time. Chrome uses this as the fake webcam feed via `--use-file-for-fake-video-capture`.
+Instead of synthetic silhouettes, you can feed real videos from a **facial expression dataset** (e.g. MP4, AVI, MOV, WEBM):
 
-To use your own video:
+1. Place your video clips inside `docker-bots/facial_dataset/`
+2. The bots will automatically extract **random 2-3 second realistic snippets** (with seamless ping-pong loop smoothing) into `video_pool/`.
+3. Or manually generate snippet feeds:
 ```bash
-# Convert any video to Y4M format
-ffmpeg -i your_face.mp4 -pix_fmt yuv420p -s 640x480 -r 15 mock_face.y4m
-
-# Mount it into the container
-docker compose run -v ./my_video.y4m:/app/mock_face.y4m bot
+python dataset_to_video.py --dataset-dir ./facial_dataset --output-dir ./video_pool --count 5 --snippet-min 2.0 --snippet-max 3.0
 ```
+
+## Hardware Saver & Realism Mode (1-2 Active Videos)
+
+In real meetings, only a small fraction of participants have webcams turned on. Streaming video from 10+ bots simultaneously exhausts CPU/RAM.
+
+Zomo automatically manages **active video concurrency**:
+- `--max-active-video 2`: At most 2 bots stream active video simultaneously; the remaining bots join with cameras OFF.
+- `--video-ratio 0.2`: 20% of joined bots stream video.
+- `--video-cycle-interval 180`: (Optional) Dynamically rotates active cameras every 3 minutes so bots naturally take turns on video.
+
+This slashes hardware resource usage by up to **80-90%** while making the meeting look 100% human and realistic!
 
 ## Resource Usage
 
 Each bot container uses approximately:
 - **RAM**: 400-800 MB (headless Chromium)
-- **CPU**: 0.3-0.8 cores
+- **CPU**: 0.1-0.3 cores (camera off) / 0.4-0.8 cores (video active)
 
 Plan your scaling accordingly. For 10 bots, ensure ~8 GB RAM and 4+ CPU cores available.
 

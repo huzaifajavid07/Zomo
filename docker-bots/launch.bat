@@ -29,11 +29,15 @@ echo.
 python zoom_human_bots.py ^
   --meeting-url "%MEETING_URL%" ^
   --count %BOT_COUNT% ^
+  --max-active-video 2 ^
+  --video-ratio 0.2 ^
+  --dataset-dir ./facial_dataset ^
   --chat-min 20 ^
   --chat-max 60 ^
   --join-delay-min 8 ^
   --join-delay-max 25 ^
   --headless ^
+  --per-bot-browser ^
   --mock-video ./mock_face.y4m ^
   --names-file ./names.json ^
   --messages-file ./messages.json
